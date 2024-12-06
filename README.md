@@ -6,24 +6,16 @@ The The structure of the repository is:
 
 - README.md    - This file
 - typescript/  - TypeScript code
-  - first-infra/
-    - step1/
-    - ...
-  - refine-infra/
-    - step1/
-    - ...
+  - step1-first-infra/
+  - step2-refine-first-infra/
   - ...
 - python/      - Python code
-  - first-infra/
-    - step1/
-    - ...
-  - refine-infra/
-    - step1/
-    - ...
+  - step1-first-infra/
+  - step2-refine-first-infra/
   - ... 
 
 At the top level are the different languages that are used in the book.
-Next level are the different chapters of the book, and the third level are the different steps in the chapter.
+Next level are the different steps for the projects in the book.
 
 
 
