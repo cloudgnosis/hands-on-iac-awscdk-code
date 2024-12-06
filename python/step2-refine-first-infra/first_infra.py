@@ -1,9 +1,6 @@
 import os
 import aws_cdk as cdk
-from aws_cdk import (
-    aws_iam as iam,
-    aws_ec2 as ec2
-)
+from aws_cdk import aws_iam as iam, aws_ec2 as ec2
 
 app = cdk.App()
 environment = cdk.Environment(
@@ -15,8 +12,8 @@ role = iam.Role(
     stack,
     "ec2-role",
     assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
-    managed_policies = [
-	iam.ManagedPolicy.from_aws_managed_policy_name('AmazonSSMManagedInstanceCore')
+    managed_policies=[
+        iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
     ],
 )
 
