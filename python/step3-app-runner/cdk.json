@@ -1,0 +1,3 @@
+{
+   "app": "uv run app-runner.py"
+}

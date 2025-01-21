@@ -1,0 +1,10 @@
+[project]
+name = "container-infra"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aws-cdk-aws-apprunner-alpha>=2.173.0a0",
+    "aws-cdk-lib>=2.173.0",
+]
