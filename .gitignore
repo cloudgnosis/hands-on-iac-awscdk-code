@@ -1,3 +1,10 @@
 python/step3-container-infra/__pycache__
 python/step3-container-infra/cdk.out
 python/step3-container-infra/cdk.context.json
+python/step3-app-runner/cdk.out
+python/step4-container-infra/__pycache__
+python/step4-container-infra/cdk.out
+python/step5-refine-container-infra/__pycache__
+python/step5-refine-container-infra/cdk.out
+python/step6-testing-the-infra-code/__pycache__
+python/step6-testing-the-infra-code/cdk.out
