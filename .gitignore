@@ -8,3 +8,5 @@ python/step5-refine-container-infra/__pycache__
 python/step5-refine-container-infra/cdk.out
 python/step6-testing-the-infra-code/__pycache__
 python/step6-testing-the-infra-code/cdk.out
+python/step7-more-tdd/__pycache__
+python/step7-more-tdd/cdk.out
