@@ -26,13 +26,23 @@ taskconfig: containers.TaskConfig = {
 }
 containerconfig: containers.ContainerConfig = {
     "image": "public.ecr.aws/aws-containers/hello-app-runner:latest",
+    "tcp_ports": [8000],
 }
 taskdef = containers.add_task_definition_with_container(
     stack, f"taskdef-{taskconfig['family']}", taskconfig, containerconfig
 )
 
-containers.add_service(
-    stack, f"service-{taskconfig['family']}", cluster, taskdef, 8000, 0, True
+service = containers.add_service(
+    stack, f"service-{taskconfig['family']}", cluster, taskdef, 8000, 2, True
+)
+
+containers.set_service_scaling(
+    service=service.service,
+    config=containers.ServiceScalingConfig(
+        min_count=1,
+        max_count=4,
+        scale_cpu_target=containers.ScalingThreshold(percent=50),
+        scale_memory_target=containers.ScalingThreshold(percent=70))
 )
 
 app.synth()

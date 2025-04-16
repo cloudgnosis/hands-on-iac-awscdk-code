@@ -1,8 +1,9 @@
-from typing import Literal, TypedDict  # noqa
+from typing import Literal, TypedDict, List  # noqa
 import constructs as cons
 from aws_cdk import (
     aws_ec2 as ec2,
     aws_ecs as ecs,
+    aws_ecs_patterns as ecspat,
     aws_logs as logs,
 )
 
@@ -15,6 +16,7 @@ class TaskConfig(TypedDict):
 
 class ContainerConfig(TypedDict):
     image: str
+    tcp_ports: List[int]
 
 
 def add_task_definition_with_container(
@@ -37,7 +39,10 @@ def add_task_definition_with_container(
     )
     image = ecs.ContainerImage.from_registry(container_config["image"])
     image_id = f"container-{_extract_image_name(container_config['image'])}"
-    taskdef.add_container(image_id, image=image, logging=logdriver)
+    containerdef = taskdef.add_container(image_id, image=image, logging=logdriver)
+
+    for port in container_config["tcp_ports"]:
+        containerdef.add_port_mappings(ecs.PortMapping(container_port=port, protocol=ecs.Protocol.TCP))
 
     return taskdef
 
@@ -49,30 +54,21 @@ def add_service(
     taskdef: ecs.FargateTaskDefinition,
     port: int,
     desired_count: int,
-    assign_public_ip: bool = False,
-    service_name: str = None,
-) -> ecs.FargateService:
-    name = service_name if service_name else ""
-    sg = ec2.SecurityGroup(
-        scope,
-        f"{id}-security-group",
-        description=f"security group for service {name}",
-        vpc=cluster.vpc,
-    )
-    sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(port))
-
-    service = ecs.FargateService(
+    use_public_endpoint: bool = True,
+    service_name: str | None = None,
+) -> ecspat.ApplicationLoadBalancedFargateService:
+    service = ecspat.ApplicationLoadBalancedFargateService(
         scope,
         id,
         cluster=cluster,
         task_definition=taskdef,
+        listener_port=port,
         desired_count=desired_count,
         service_name=service_name,
-        security_groups=[sg],
         circuit_breaker=ecs.DeploymentCircuitBreaker(
             rollback=True,
         ),
-        assign_public_ip=assign_public_ip,
+        public_load_balancer=use_public_endpoint,
     )
     return service
 
@@ -85,3 +81,18 @@ def _extract_image_name(image_ref):
     name_with_tag = image_ref.split("/")[-1]
     name = name_with_tag.split(":")[0]
     return name
+
+class ScalingThreshold(TypedDict):
+    percent: float
+
+class ServiceScalingConfig(TypedDict):
+    min_count: int
+    max_count: int
+    scale_cpu_target: ScalingThreshold
+    scale_memory_target: ScalingThreshold
+
+def set_service_scaling(service: ecs.FargateService, config: ServiceScalingConfig):
+    scaling = service.auto_scale_task_count(max_capacity=config["max_count"], min_capacity=config["min_count"])
+    scaling.scale_on_cpu_utilization('CpuScaling', target_utilization_percent=config["scale_cpu_target"]["percent"])
+    scaling.scale_on_memory_utilization('MemoryScaling', target_utilization_percent=config["scale_memory_target"]["percent"])
+    

@@ -1,3 +1,4 @@
+import pytest
 import aws_cdk as cdk
 from aws_cdk import (
     aws_ec2 as ec2,
@@ -28,7 +29,7 @@ def test_ecs_fargate_task_definition_defined():
         "family": familyval,
     }
     image = "public.ecr.aws/aws-containers/hello-app-runner:latest"
-    containercfg: containers.ContainerConfig = {"image": image}
+    containercfg: containers.ContainerConfig = {"image": image, "tcp_ports": [8000]}
     taskdef = containers.add_task_definition_with_container(
         stack, f"taskdef-{taskcfg['family']}", taskcfg, containercfg
     )
@@ -60,7 +61,7 @@ def test_container_definition_added_to_task_definition():
         "family": familyval,
     }
     image_name = "public.ecr.aws/aws-containers/hello-app-runner:latest"
-    containercfg: containers.ContainerConfig = {"image": image_name}
+    containercfg: containers.ContainerConfig = {"image": image_name, "tcp_ports": [8000]}
 
     taskdef = containers.add_task_definition_with_container(
         stack, "test-taskdef", taskcfg, containercfg
@@ -81,25 +82,32 @@ def test_container_definition_added_to_task_definition():
         },
     )
 
-
-def test_fargate_service_created_with_only_mandatory_properties():
+@pytest.fixture
+def service_test_input_data():
     stack = cdk.Stack()
     vpc = ec2.Vpc(stack, "vpc")
     cluster = containers.add_cluster(stack, "test-cluster", vpc=vpc)
     cpuval = 512
     memval = 1024
-    familyval = "test"
+    familyval = 'test'
     taskcfg: containers.TaskConfig = {
         "cpu": cpuval,
         "memory_limit_mib": memval,
         "family": familyval,
     }
     image_name = "public.ecr.aws/aws-containers/hello-app-runner:latest"
-    containercfg: containers.ContainerConfig = {"image": image_name}
+    containercfg: containers.ContainerConfig = {"image": image_name, "tcp_ports": [8000]}
 
     taskdef = containers.add_task_definition_with_container(
         stack, "test-taskdef", taskcfg, containercfg
     )
+    return { "stack": stack, "cluster": cluster, "task_definition": taskdef}
+
+
+def test_fargate_service_created_with_only_mandatory_properties(service_test_input_data):
+    stack = service_test_input_data["stack"]
+    cluster = service_test_input_data["cluster"]
+    taskdef = service_test_input_data["task_definition"]
 
     port = 80
     desired_count = 1
@@ -133,6 +141,12 @@ def test_fargate_service_created_with_only_mandatory_properties():
         },
     )
 
+    template.resource_count_is('AWS::ElasticLoadBalancingV2::LoadBalancer', 1)
+    template.has_resource_properties('AWS::ElasticLoadBalancingV2::LoadBalancer', {
+        'Type': 'application',
+        'Scheme': 'internet-facing'
+    })
+
     template.has_resource_properties(
         "AWS::EC2::SecurityGroup",
         {
@@ -145,3 +159,66 @@ def test_fargate_service_created_with_only_mandatory_properties():
             )
         },
     )
+
+def test_fargate_service_created_without_public_access(service_test_input_data):
+    stack = service_test_input_data["stack"]
+    cluster = service_test_input_data["cluster"]
+    taskdef = service_test_input_data["task_definition"]
+
+    port = 80
+    desired_count = 1
+    containers.add_service(stack, 'test-service', cluster, taskdef, port, desired_count, False)
+
+    template = assertions.Template.from_stack(stack)
+    template.resource_count_is('AWS::ElasticLoadBalancingV2::LoadBalancer', 1)
+    template.has_resource_properties('AWS::ElasticLoadBalancingV2::LoadBalancer', {
+        'Type': 'application',
+        'Scheme': 'internal'
+    })
+
+def test_scaling_settings_for_service(service_test_input_data):
+    stack = service_test_input_data['stack']
+    cluster = service_test_input_data['cluster']
+    taskdef = service_test_input_data['task_definition']
+    port = 80
+    desired_count = 2
+
+    service = containers.add_service(stack, 'test-service', cluster, taskdef, port, desired_count, False)
+
+    config = containers.ServiceScalingConfig(
+        min_count=1,
+        max_count=5,
+        scale_cpu_target=containers.ScalingThreshold(percent=50),
+        scale_memory_target=containers.ScalingThreshold(percent=50))
+    containers.set_service_scaling(service=service.service, config=config)
+
+    scale_resource = assertions.Capture()
+    template = assertions.Template.from_stack(stack)
+    template.resource_count_is('AWS::ApplicationAutoScaling::ScalableTarget', 1)
+    template.has_resource_properties('AWS::ApplicationAutoScaling::ScalableTarget', {
+        'MaxCapacity': config["max_count"],
+        'MinCapacity': config["min_count"],
+        'ResourceId': scale_resource,
+        'ScalableDimension': 'ecs:service:DesiredCount',
+        'ServiceNamespace': 'ecs'
+    })
+
+    template.resource_count_is('AWS::ApplicationAutoScaling::ScalingPolicy', 2)
+    template.has_resource_properties('AWS::ApplicationAutoScaling::ScalingPolicy', {
+        'PolicyType': 'TargetTrackingScaling',
+        'TargetTrackingScalingPolicyConfiguration': assertions.Match.object_like({
+            'PredefinedMetricSpecification': assertions.Match.object_equals({
+                'PredefinedMetricType': 'ECSServiceAverageCPUUtilization'
+            }),
+            'TargetValue': config["scale_cpu_target"]["percent"]
+        })
+    })
+    template.has_resource_properties('AWS::ApplicationAutoScaling::ScalingPolicy', {
+        'PolicyType': 'TargetTrackingScaling',
+        'TargetTrackingScalingPolicyConfiguration': assertions.Match.object_like({
+            'PredefinedMetricSpecification': assertions.Match.object_equals({
+                'PredefinedMetricType': 'ECSServiceAverageMemoryUtilization'
+            }),
+            'TargetValue': config["scale_memory_target"]["percent"]
+        })
+    })
